@@ -5,7 +5,9 @@
 //
 // * 1.1    13th June 2022	  Vikas Vasudevan     Refactored some code and added support for 
 //                                                             Datatime, boolean and double
-// 
+//                                                             
+// * 1.2    3rd  sept 2022	  Vikas Vasudevan     Included resetnull option for list filter, Now you dont have to
+//                                                specify donullcheck for list.It will sort itself behind the scene.
 
 public  without sharing class GenericDynamicSoqlBuilder 
 {
@@ -348,7 +350,10 @@ public  without sharing class GenericDynamicSoqlBuilder
         doNullCheck(fieldValueList);
         // and (fieldname in(value)) 
         if (((fieldValueList==null) ||(fieldValueList.size()==0)) && (!notNullValue))
+        {
+            addResetNullCheck();
             return this;
+        }
         Sqlstring = Sqlstring + genericSqlConst.DOUBLEBLANKSPACE+ genericSqlConst.ANDSTR+genericSqlConst.DOUBLEBLANKSPACE+ 
             '{0}'+ FieldName + genericSqlConst.DOUBLEBLANKSPACE+  conditionSign+ genericSqlConst.DOUBLEBLANKSPACE+
             genericSqlConst.STARTBRACSTR+string.join(ParseValueList(fieldValueList,TypeVal), genericSqlConst.COMMASTR)+ genericSqlConst.ENDBRACSTR+
@@ -370,7 +375,10 @@ public  without sharing class GenericDynamicSoqlBuilder
         doNullCheck(fieldValueList);
         //OR (fieldname in(value))  
         if (((fieldValueList==null) ||(fieldValueList.size()==0))&& (!notNullValue))
+        {
+            addResetNullCheck();
             return this;
+        }
         Sqlstring = Sqlstring + genericSqlConst.DOUBLEBLANKSPACE+ genericSqlConst.ORSTR+genericSqlConst.DOUBLEBLANKSPACE+ 
             '{0}'+ FieldName + genericSqlConst.DOUBLEBLANKSPACE+  conditionSign+ genericSqlConst.DOUBLEBLANKSPACE+
             genericSqlConst.STARTBRACSTR+string.join(ParseValueList(fieldValueList,TypeVal), genericSqlConst.COMMASTR)+ genericSqlConst.ENDBRACSTR+'{1}';
@@ -393,10 +401,14 @@ public  without sharing class GenericDynamicSoqlBuilder
         doNullCheck(fieldValueList);
         //OR (fieldname in(value))  
         if (((fieldValueList==null) ||(fieldValueList.size()==0))&& (!notNullValue))
+        {
+            addResetNullCheck();
             return this;
+        }
         Sqlstring = Sqlstring + genericSqlConst.DOUBLEBLANKSPACE+ '{0}'+ FieldName + genericSqlConst.DOUBLEBLANKSPACE+  conditionSign+ genericSqlConst.DOUBLEBLANKSPACE+
             genericSqlConst.STARTBRACSTR+string.join(ParseValueList(fieldValueList,TypeVal), genericSqlConst.COMMASTR)+ genericSqlConst.ENDBRACSTR+'{1}';
         sqlString = getFormattedString(Sqlstring,addSurroundingBracket);
+        
         return this;
         
     }
