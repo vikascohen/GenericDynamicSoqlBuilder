@@ -1,16 +1,91 @@
 // 
-// * 1.0    18th Feb 2022	  Vikas Vasudevan     Library to build dynamic Soql string in Apex,
+// * 1.0    18th Feb 2022	  Vikas Cohen Vasudevan     Library to build dynamic Soql string in Apex,
 //                                                            Added Null check
 //                                                            Added Date,string and Int check 	
 //
-// * 1.1    13th June 2022	  Vikas Vasudevan     Refactored some code and added support for 
+// * 1.1    13th June 2022	  Vikas Cohen Vasudevan    Refactored some code and added support for 
 //                                                             Datatime, boolean and double
 //                                                             
-// * 1.2    3rd  sept 2022	  Vikas Vasudevan     Included resetnull option for list filter, Now you dont have to
-//                                                specify donullcheck for list.It will sort itself behind the scene.
+// * 1.2    3rd  sept 2022	  Vikas Cohen Vasudevan    Included resetnull option for list filter, Now you dont have to
+//                                                     specify donullcheck for list.It will sort itself behind the scene.
+//  * 1.3   15th Nov  2023	  Vikas Cohen Vasudevan    Added Sosl support and Querystore support to store query result.
+//                                                     Added Soqlresult and Soslresult method to builder pattern                                            
 
-public  without sharing class GenericDynamicSoqlBuilder 
+public  inherited sharing class GenericDynamicSoqlBuilder 
 {
+    private class CacheEntry
+    {
+        String query;
+        List<sObject> result;
+        DateTime expirationTime;
+        
+        public CacheEntry(String query, List<sObject> result, DateTime expirationTime)
+        {
+            this.query = query;
+            this.result = result;
+            this.expirationTime = expirationTime;
+        }
+    }
+    public class QueryStore
+    {
+        private  Map<String, CacheEntry> queryCache = new Map<String, CacheEntry>();
+        private  Integer MAX_CACHE_SIZE = 100; // Adjust the size as needed
+        
+        public  String getCachedQuery(String key)
+        {
+            CacheEntry entry = queryCache.get(key);
+            if (entry != null && entry.expirationTime > DateTime.now())
+            {
+                return entry.query;
+            }
+            // Remove expired or non-existent entry
+            queryCache.remove(key);
+            return null;
+        }
+        
+        public  List<sObject> getCachedResult(String key)
+        {
+            CacheEntry entry = queryCache.get(key);
+            
+            if (entry != null && entry.expirationTime > DateTime.now())
+            {
+                return entry.result;
+            }
+            // Remove expired or non-existent entry
+            queryCache.remove(key);
+            return null;
+        }
+        
+        public  void cacheQuery(String key, String query, List<sObject> result, Integer ttlMinutes)
+        {
+            DateTime expirationTime = DateTime.now().addMinutes(ttlMinutes);
+            CacheEntry entry = new CacheEntry(query, result, expirationTime);
+            // Check if the cache has reached its limit
+            if (queryCache.size() >= MAX_CACHE_SIZE)
+            {
+                
+                // Remove the least recently used entry
+                String lruKey = queryCache.keySet().iterator().next();
+                queryCache.remove(lruKey);
+            }
+            
+            queryCache.put(key, entry);
+            
+        }
+        
+        public  void clearCache()
+        {
+            queryCache.clear();
+        }
+        
+        public  void removeCachedQuery(String key)
+        {
+            queryCache.remove(key);
+        }
+    }
+    
+    
+    
     private  Class KEYSQLDataType
     {
         private  final String STRINGTYPE= 'S';
@@ -46,11 +121,19 @@ public  without sharing class GenericDynamicSoqlBuilder
     @testvisible
     private  MainGenericSqlConst genericSqlConst = new MainGenericSqlConst();
     @testvisible
-    private   KeySQLDataType  SQLDataType = new KeySQLDataType();
+    private   KeySQLDataType  sqlDataType = new KeySQLDataType();
     protected  string Sqlstring='';
     private  list<string> surroundingBrackets = new List<string>{'(', ')'};
-        private string DateFormat= 'yyyy-MM-dd';//default format
+    private string dateFormat= 'yyyy-MM-dd';//default format
     private boolean notNullValue= true;
+    @testvisible
+    private QueryStore  queryStorecontainer =new QueryStore();
+    
+    @testvisible
+    public  QueryStore getQueryStore()
+    {
+        return queryStorecontainer;
+    }
     @testvisible
     private string parseIndividualValue(object fieldValue, string TypeVal)
     {
@@ -266,7 +349,7 @@ public  without sharing class GenericDynamicSoqlBuilder
     }
     
     //  Return build Sql string
-    public virtual string BuildSql()  
+    public virtual string buildSql()  
     {
         return Sqlstring;
     }
@@ -444,6 +527,53 @@ public  without sharing class GenericDynamicSoqlBuilder
         sqlString = getFormattedString(Sqlstring,addSurroundingBracket);
         return this;
     }
+    
+    public virtual GenericDynamicSoqlBuilder addSoslSearch(String searchTerm)
+    {
+        if (notNullValue)
+        {
+            Sqlstring =  'FIND \'' + searchTerm + '\' IN ALL FIELDS Returning ';
+        }
+        return this;
+    }
+    
+    public virtual GenericDynamicSoqlBuilder addSoslSearchInObjects(string objectname, list<string> fieldnames, boolean addcomma)
+    {   if (fieldnames?.size()>0)
+    {
+        Sqlstring = Sqlstring + genericSqlConst.DOUBLEBLANKSPACE+ objectname+ genericSqlConst.STARTBRACSTR + 
+            String.join(fieldnames, ',')+ genericSqlConst.ENDBRACSTR;
+        if (addcomma)
+        {
+            Sqlstring = Sqlstring+ genericSqlConst.COMMASTR;
+        }
+    }
+     
+     
+     return this;
+    }
+    public virtual GenericDynamicSoqlBuilder soqlResult(boolean UserMode, list<sobject> result)
+    {
+        result= new list<sobject>();
+        if (UserMode)
+        {
+            result.addall(database.query(Sqlstring,AccessLevel.USER_MODE));
+        }
+        else 
+            result.addall(database.query(Sqlstring,AccessLevel.SYSTEM_MODE));
+        return this;
+        
+    }
+    public virtual GenericDynamicSoqlBuilder soslResult( list<list<sobject>> result)
+    {
+        result= new list<list<sobject>>() ;
+        result.addall(search.query(Sqlstring));
+        return this;
+        
+    }
+    
+    
+    
+    
     public virtual string getEqualSign()
     {
         return genericSqlConst.EQUALSTR;
@@ -468,6 +598,8 @@ public  without sharing class GenericDynamicSoqlBuilder
     {
         return genericSqlConst.LESSTHANEQ;
     }
+    
+    
     
     
 }
