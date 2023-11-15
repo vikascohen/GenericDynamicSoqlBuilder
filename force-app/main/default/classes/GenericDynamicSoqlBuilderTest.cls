@@ -117,6 +117,83 @@ public class GenericDynamicSoqlBuilderTest {
         system.Test.stopTest();
         
     }
+     @isTest
+    static void testDynamicQueryBuilder() {
+        // Create an instance of GenericDynamicSoqlBuilder
+        GenericDynamicSoqlBuilder dynamicQueryBuilder = new GenericDynamicSoqlBuilder();
+        system.Test.startTest();    
+        // Use methods to build the dynamic SOQL query
+        dynamicQueryBuilder.addSelectSql()
+            .addFields(new List<String>{'Id', 'Name'})
+            .addFromObject('Account')
+            .addLimitVal('1');
+
+        // Get the built query
+        String dynamicQuery = dynamicQueryBuilder.BuildSql();
+        String cacheKey = 'exampleQuery';
+
+        // Execute the query using Database.query
+        List<SObject> queryResult = Database.query(dynamicQuery);
+
+        // Cache the query and result
+        dynamicQueryBuilder.getQueryStore().cacheQuery(cacheKey, dynamicQuery, queryResult, 60);
+
+        // Process the query result (replace this with your actual logic)
+        System.debug('Query Result:');
+        for (SObject record : queryResult) {
+            System.debug(record);
+        }
+
+        // Retrieve and debug the cached result
+        List<SObject> cachedResult = dynamicQueryBuilder.getQueryStore().getCachedResult(cacheKey);
+        System.debug('Cached Result:');
+        System.debug(cachedResult);
+
+        // Clear the query cache
+        dynamicQueryBuilder.getQueryStore().clearCache();
+        List<SObject> clearedCacheResult = dynamicQueryBuilder.getQueryStore().getCachedResult(cacheKey);
+        System.debug('Cleared Cache Result:');
+        System.debug(clearedCacheResult);
+
+        // Additional assertions for cleared cache
+        System.assert(clearedCacheResult==null);
+        system.Test.stopTest();
+    }
+    @isTest
+    static void testSoslSearch() {
+        // Create an instance of GenericDynamicSoqlBuilder
+        GenericDynamicSoqlBuilder builder = new GenericDynamicSoqlBuilder();
+         system.Test.startTest();  
+        // Define test data
+        List<List<SObject>> searchResults = new List<List<SObject>>();
+        
+        // Build the dynamic SOSL query
+        builder
+            .addSoslSearch('test account')
+            .addSoslSearchInObjects('account', new List<String>{'Name'}, true)
+            .addSoslSearchInObjects('contact', new List<String>{'FirstName','LastName'}, true)
+            .addSoslSearchInObjects('opportunity', new List<String>{'Name'}, false)
+            .soslResult(searchResults);
+
+        // Get the built SOSL query
+        String soslQuery = builder.BuildSql();
+
+        // Debug statements (replace with actual assertions)
+        System.debug('Dynamic SOSL: ' + soslQuery);
+        System.debug('Search Results: ' + searchResults);
+
+        // Add assertions as needed
+        System.assertNotEquals(null, soslQuery, 'SOSL query should not be null');
+       
+        // Example assertion for the first object in searchResults
+        if (searchResults.size() > 0) {
+            List<SObject> accountResults = searchResults[0];
+            System.assertEquals(1, accountResults.size(), 'Account search results should have one record');
+         
+        }
+        system.Test.stopTest();
+
+    }
    
     
 }
