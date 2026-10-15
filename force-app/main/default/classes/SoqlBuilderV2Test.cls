@@ -330,4 +330,51 @@ private class SoqlBuilderV2Test {
         SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account').selectFields(new List<String>{'Id'}).whereGreaterThan('AnnualRevenue',50);
         System.assertEquals(1,b.execute(AccessLevel.SYSTEM_MODE).size());
     }
+    @IsTest static void rejectsIncompatibleScalarTypes() {
+        Integer failures = 0;
+        try { SoqlBuilderV2.fromObject('Account').whereEquals('Id', 123); }
+        catch (SoqlBuilderV2.QueryException e) { failures++; }
+        System.assertEquals(1, failures);
+        try { SoqlBuilderV2.fromObject('Account').whereEquals('CreatedDate', 100); }
+        catch (SoqlBuilderV2.QueryException e) { failures++; }
+        System.assertEquals(2, failures);
+        try { SoqlBuilderV2.fromObject('Account').whereEquals('Name', true); }
+        catch (SoqlBuilderV2.QueryException e) { failures++; }
+        System.assertEquals(3, failures);
+        try { SoqlBuilderV2.fromObject('Account').whereEquals('IsDeleted', 'false'); }
+        catch (SoqlBuilderV2.QueryException e) { failures++; }
+        System.assertEquals(4, failures);
+        try { SoqlBuilderV2.fromObject('Account').whereLessThan('AnnualRevenue', Date.today()); }
+        catch (SoqlBuilderV2.QueryException e) { failures++; }
+        System.assertEquals(5, failures);
+        System.assertEquals(5, failures, 'One of the incompatible scalar types was accepted');
+    }
+    @IsTest static void typedDatesIdsBooleansAndNulls() {
+        Account a = new Account(Name='TypedAccount', AnnualRevenue=99);
+        insert a;
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+            .selectFields(new List<String>{'Id'})
+            .whereEquals('Id', a.Id)
+            .whereEquals('IsDeleted', false)
+            .whereLessThan('CreatedDate', System.now().addDays(1))
+            .whereNotEquals('Name', null);
+        System.assertEquals(1, b.execute(AccessLevel.SYSTEM_MODE).size());
+        System.assertEquals(1, b.countMatches(AccessLevel.SYSTEM_MODE));
+    }
+    @IsTest static void deeplyNestedFiltersHaveBoundedQueryCost() {
+        insert new Account(Name='NestedAccount', AnnualRevenue=150);
+        SoqlBuilderV2.Filter f = SoqlBuilderV2.eq('Name', 'NestedAccount');
+        for (Integer i = 0; i < 30; i++) {
+            f = f.andFilter(SoqlBuilderV2.gt('AnnualRevenue', 100));
+        }
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+            .selectFields(new List<String>{'Id'}).whereFilter(f);
+        Test.startTest();
+        Integer beforeQueries = Limits.getQueries();
+        Integer beforeCpu = Limits.getCpuTime();
+        System.assertEquals(1, b.execute(AccessLevel.SYSTEM_MODE).size());
+        System.assertEquals(1, Limits.getQueries() - beforeQueries);
+        System.assert(Limits.getCpuTime() - beforeCpu < Limits.getLimitCpuTime());
+        Test.stopTest();
+    }
 }
