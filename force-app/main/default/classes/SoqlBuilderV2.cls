@@ -135,6 +135,22 @@ public inherited sharing class SoqlBuilderV2 {
         if (mode == null) throw new QueryException('Explicit access mode required');
         return Database.queryWithBinds(buildSql(), bindings, mode);
     }
+    /** Count matching rows without retrieving full records. */
+    public Integer countMatches(AccessLevel mode) {
+        if (mode == null) throw new QueryException('Explicit access mode required');
+        if (!groupStarts.isEmpty()) throw new QueryException('Unclosed predicate group');
+        String sql = 'SELECT COUNT() FROM ' + objectName;
+        if (!predicates.isEmpty()) {
+            sql += ' WHERE ' + predicates[0];
+            for (Integer i = 1; i < predicates.size(); i++) sql += ' ' + conjunctions[i] + ' ' + predicates[i];
+        }
+        return Database.countQueryWithBinds(sql, bindings, mode);
+    }
+    /** Use in batch start() for streaming larger datasets. */
+    public Database.QueryLocator queryLocator(AccessLevel mode) {
+        if (mode == null) throw new QueryException('Explicit access mode required');
+        return Database.getQueryLocatorWithBinds(buildSql(), bindings, mode);
+    }
     public Map<String, Object> getBindings() {
         return bindings.clone();
     }

@@ -85,4 +85,16 @@ private class SoqlBuilderV2Test {
         catch (SoqlBuilderV2.QueryException e) { rejected = true; }
         System.assert(rejected);
     }
+    @IsTest static void countMatchesUsesSameFilters() {
+        insert new List<Account>{new Account(Name='CountOne'),new Account(Name='CountTwo')};
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+            .selectFields(new List<String>{'Id'}).whereLike('Name','Count%');
+        System.assertEquals(2, b.countMatches(AccessLevel.SYSTEM_MODE));
+        System.assertEquals(2, b.execute(AccessLevel.SYSTEM_MODE).size());
+    }
+    @IsTest static void queryLocatorCanBeCreated() {
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+            .selectFields(new List<String>{'Id'}).limitTo(10);
+        System.assertNotEquals(null,b.queryLocator(AccessLevel.SYSTEM_MODE));
+    }
 }

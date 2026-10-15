@@ -26,3 +26,13 @@ List<SObject> records = SoqlBuilderV2.fromObject('Account')
 ```
 
 Additional predicates: `whereGreaterThan`, `whereLessThan`, `whereNotEquals`, `whereLike`, `whereIn` (currently accepts `Set<Id>` for Id/reference fields only). Groups must be balanced. Comparisons reject null values; equality explicitly supports null. Nested grouping uses explicit parentheses. V2 test suite: 8 tests passed in `warden-validation` on 15 October 2026, 100% test-run coverage reported by Salesforce. This is not a claim of full security or integration coverage. The query model remains mutable and additional permission and edge-case testing is planned.
+
+## Native execution capabilities
+
+V2 delegates execution to Salesforce's native bind-aware APIs. `execute(mode)` retrieves rows, `countMatches(mode)` counts matching records without loading them, and `queryLocator(mode)` returns a batch-friendly `Database.QueryLocator`. Pass `AccessLevel.USER_MODE` for permission-aware execution. Do not assume `countMatches()` respects row pagination; it intentionally counts matching records before LIMIT/OFFSET. The query locator uses the configured SELECT query.
+
+## Differentiation and design direction
+
+Salesforce already supplies bind-aware execution, and fflib supplies selector/query factory patterns. V2 targets smaller teams and metadata-driven applications that need safe, validated query composition without an enterprise framework dependency. Planned: typed predicate AST, operator/type compatibility checks, reusable filter specifications, relationship path validation, security tests under restricted users and CI. These are not yet implemented.
+
+Validation: 10 Apex tests passed in `warden-validation` on 15 October 2026. Salesforce reported 100% test-run coverage; this is not a security certification or a claim that every edge case is tested.
