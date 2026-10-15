@@ -210,4 +210,24 @@ private class SoqlBuilderV2Test {
             System.assertEquals(1,b.countMatches(AccessLevel.USER_MODE));
         }
     }
+    @IsTest static void restrictedProfileDeniesUserMode() {
+        Profile minimum = [SELECT Id FROM Profile WHERE Name = 'Minimum Access - Salesforce' LIMIT 1];
+        User u = new User(Alias='limited', Email='limited@example.com',
+            EmailEncodingKey='UTF-8', LastName='Limited', LanguageLocaleKey='en_US',
+            LocaleSidKey='en_US', TimeZoneSidKey='America/Los_Angeles',
+            ProfileId=minimum.Id,
+            Username='limited.' + String.valueOf(Crypto.getRandomInteger()) + '@example.com');
+        insert u;
+        Account a = new Account(Name='SecurityTarget'); insert a;
+        System.runAs(u) {
+            System.assertEquals(false, Schema.sObjectType.Account.isAccessible());
+            SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+                .selectFields(new List<String>{'Id','Name'}).whereEquals('Id',a.Id);
+            Boolean denied = false;
+            try { b.execute(AccessLevel.USER_MODE); }
+            catch (System.QueryException e) { denied = true; }
+            System.assert(denied, 'USER_MODE must enforce restricted object access');
+            System.assertEquals(1,b.execute(AccessLevel.SYSTEM_MODE).size());
+        }
+    }
 }
