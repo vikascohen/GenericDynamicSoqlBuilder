@@ -180,9 +180,11 @@ In this illustrative SQL, `:owner_id_1` represents the single user ID supplied i
 
 **Practical constraints:** The owner ID set must not be empty; the example uses the current user's ID. `whereIn` currently supports only ID/reference fields. `OFFSET` is limited to 2,000. The query is an example of supported APIs, not a claim that every Salesforce org has the same data, field permissions or matching records.
 
-## API at a glance
+## V2 method reference
 
-| Purpose | API |
+The table below is a **method reference**, not a complete API specification. It groups the principal public builder operations by purpose; signatures are abbreviated where noted. For detailed usage, refer to the examples above and the Apex source.
+
+| Purpose | Public methods |
 | --- | --- |
 | Create builder | `fromObject(String)` |
 | Select fields | `selectFields(List<String>)`, `selectParentFields(List<String>)` |
