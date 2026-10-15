@@ -169,4 +169,21 @@ private class SoqlBuilderV2Test {
         catch (SoqlBuilderV2.QueryException e) { rejected = true; }
         System.assert(rejected);
     }
+    @IsTest static void parentFieldQueryExecutes() {
+        Account a = new Account(Name='RelatedAccount'); insert a;
+        Contact c = new Contact(LastName='RelatedContact', AccountId=a.Id); insert c;
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Contact')
+            .selectFields(new List<String>{'Id'})
+            .selectParentFields(new List<String>{'Account.Name'})
+            .whereEquals('Id',c.Id);
+        List<SObject> rows = b.execute(AccessLevel.SYSTEM_MODE);
+        System.assertEquals(1,rows.size());
+        System.assertEquals('RelatedAccount',rows[0].getSObject('Account').get('Name'));
+    }
+    @IsTest static void parentFieldValidationRejectsInjection() {
+        Boolean failed = false;
+        try { SoqlBuilderV2.fromObject('Contact').selectParentFields(new List<String>{'Account.Name FROM Account'}); }
+        catch (SoqlBuilderV2.QueryException e) { failed = true; }
+        System.assert(failed);
+    }
 }

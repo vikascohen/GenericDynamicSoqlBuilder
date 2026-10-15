@@ -96,6 +96,29 @@ public inherited sharing class SoqlBuilderV2 {
         }
         return fieldMap.get(name).getDescribe().getName();
     }
+    private String checkedParentField(String path) {
+        if (String.isBlank(path) || !path.contains('.')) throw new QueryException('Expected relationship.field');
+        List<String> parts = path.split('\\.');
+        if (parts.size() != 2) throw new QueryException('Only one parent hop supported');
+        for (Schema.SObjectField f : fieldMap.values()) {
+            Schema.DescribeFieldResult d = f.getDescribe();
+            if (d.getType() != Schema.DisplayType.Reference || d.getRelationshipName() == null || !d.getRelationshipName().equalsIgnoreCase(parts[0])) continue;
+            List<Schema.SObjectType> targets = d.getReferenceTo();
+            if (targets.size() != 1) throw new QueryException('Polymorphic relationship not supported');
+            Map<String, Schema.SObjectField> fields = targets[0].getDescribe().fields.getMap();
+            if (!fields.containsKey(parts[1])) throw new QueryException('Unknown parent field: ' + path);
+            return d.getRelationshipName() + '.' + fields.get(parts[1]).getDescribe().getName();
+        }
+        throw new QueryException('Unknown parent relationship: ' + path);
+    }
+    public SoqlBuilderV2 selectParentFields(List<String> paths) {
+        if (paths == null || paths.isEmpty()) throw new QueryException('Parent fields required');
+        for (String path : paths) {
+            String checked = checkedParentField(path);
+            if (!selected.contains(checked)) selected.add(checked);
+        }
+        return this;
+    }
     public SoqlBuilderV2 selectFields(List<String> names) {
         if (names == null || names.isEmpty()) throw new QueryException('At least one field required');
         for (String name : names) {
