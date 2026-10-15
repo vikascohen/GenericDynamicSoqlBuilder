@@ -139,7 +139,7 @@ public  inherited sharing class GenericDynamicSoqlBuilder
     {
         string Result;
         if (TypeVal== SQLDataType.STRINGTYPE)
-            Result= '\''+  string.valueOf(fieldValue)+ '\'';
+            Result= '\''+ String.escapeSingleQuotes(String.valueOf(fieldValue))+ '\'';
         else if (TypeVal== SQLDataType.DATETYPE)
         {
             Date value =  Date.valueOf(fieldValue);
@@ -356,6 +356,7 @@ public  inherited sharing class GenericDynamicSoqlBuilder
     public virtual void clear()
     {
         Sqlstring = '';
+        notNullValue = true;
         DateFormat= 'yyyy-MM-dd'; //assign default format
     }
     
@@ -551,29 +552,27 @@ public  inherited sharing class GenericDynamicSoqlBuilder
      
      return this;
     }
-    public virtual GenericDynamicSoqlBuilder soqlResult(boolean UserMode, list<sobject> result)
-    {
-        result= new list<sobject>();
-        if (UserMode)
-        {
-            result.addall(database.query(Sqlstring,AccessLevel.USER_MODE));
-        }
-        else 
-            result.addall(database.query(Sqlstring,AccessLevel.SYSTEM_MODE));
+    // Legacy compatibility. Prefer execute() to receive the result directly.
+    public virtual GenericDynamicSoqlBuilder soqlResult(Boolean userMode, List<SObject> result) {
+        execute(userMode ? AccessLevel.USER_MODE : AccessLevel.SYSTEM_MODE);
         return this;
-        
     }
-    public virtual GenericDynamicSoqlBuilder soslResult( list<list<sobject>> result)
-    {
-        result= new list<list<sobject>>() ;
-        result.addall(search.query(Sqlstring));
+
+    // Legacy compatibility. Prefer executeSearch().
+    public virtual GenericDynamicSoqlBuilder soslResult(List<List<SObject>> result) {
+        executeSearch();
         return this;
-        
     }
-    
-    
-    
-    
+
+    // Return query results directly rather than reassigning a caller's list parameter.
+    public virtual List<SObject> execute(AccessLevel accessMode) {
+        return Database.queryWithBinds(Sqlstring, new Map<String, Object>(), accessMode);
+    }
+
+    public virtual List<List<SObject>> executeSearch() {
+        return Search.query(Sqlstring);
+    }
+
     public virtual string getEqualSign()
     {
         return genericSqlConst.EQUALSTR;
