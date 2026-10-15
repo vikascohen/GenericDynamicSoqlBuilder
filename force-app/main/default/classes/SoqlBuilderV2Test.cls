@@ -186,4 +186,28 @@ private class SoqlBuilderV2Test {
         catch (SoqlBuilderV2.QueryException e) { failed = true; }
         System.assert(failed);
     }
+    @IsTest static void accessModeMustBeExplicit() {
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account').selectFields(new List<String>{'Id'});
+        Integer rejected = 0;
+        try { b.execute(null); } catch (SoqlBuilderV2.QueryException e) { rejected++; }
+        try { b.countMatches(null); } catch (SoqlBuilderV2.QueryException e) { rejected++; }
+        try { b.queryLocator(null); } catch (SoqlBuilderV2.QueryException e) { rejected++; }
+        System.assertEquals(3,rejected);
+    }
+    @IsTest static void userModeWithRunAs() {
+        Account a = new Account(Name='SecurityRunAs'); insert a;
+        User u = new User(Alias='secusr', Email='secusr@example.com',
+            EmailEncodingKey='UTF-8', LastName='Security',
+            LanguageLocaleKey='en_US', LocaleSidKey='en_US',
+            TimeZoneSidKey='America/Los_Angeles',
+            ProfileId=UserInfo.getProfileId(),
+            Username='secusr.' + String.valueOf(Crypto.getRandomInteger()) + '@example.com');
+        insert u;
+        System.runAs(u) {
+            SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+                .selectFields(new List<String>{'Id'}).whereEquals('Id',a.Id);
+            System.assertEquals(1,b.execute(AccessLevel.USER_MODE).size());
+            System.assertEquals(1,b.countMatches(AccessLevel.USER_MODE));
+        }
+    }
 }
