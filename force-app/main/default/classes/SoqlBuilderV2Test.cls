@@ -118,4 +118,25 @@ private class SoqlBuilderV2Test {
             .orNext().beginGroup().whereEquals('Name','B').whereEquals('Name','C').endGroup();
         System.assert(b.buildSql().contains(' OR '));
     }
+    @IsTest static void operatorTypeValidation() {
+        Boolean rejected = false;
+        try { SoqlBuilderV2.fromObject('Account').whereLike('AnnualRevenue','%100%'); }
+        catch (SoqlBuilderV2.QueryException e) { rejected = true; }
+        System.assert(rejected, 'LIKE must reject numeric fields');
+        rejected = false;
+        try { SoqlBuilderV2.fromObject('Account').whereGreaterThan('Name','A'); }
+        catch (SoqlBuilderV2.QueryException e) { rejected = true; }
+        System.assert(rejected, 'Ordering comparison must reject text fields');
+        rejected = false;
+        try { SoqlBuilderV2.fromObject('Account').whereLessThan('IsDeleted',true); }
+        catch (SoqlBuilderV2.QueryException e) { rejected = true; }
+        System.assert(rejected, 'Ordering comparison must reject boolean fields');
+    }
+    @IsTest static void textLikeAndNumericComparisonsStillExecute() {
+        insert new Account(Name='TypedFilter',AnnualRevenue=125);
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+            .selectFields(new List<String>{'Id'}).whereLike('Name','Typed%')
+            .whereGreaterThan('AnnualRevenue',100).whereLessThan('AnnualRevenue',200);
+        System.assertEquals(1,b.execute(AccessLevel.SYSTEM_MODE).size());
+    }
 }

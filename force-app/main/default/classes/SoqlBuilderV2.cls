@@ -100,18 +100,40 @@ public inherited sharing class SoqlBuilderV2 {
         PredicateNode root = currentFrame().root;
         return root == null ? '' : ' WHERE ' + root.render();
     }
+    private Schema.DisplayType fieldType(String field) {
+        checkedField(field);
+        return fieldMap.get(field).getDescribe().getType();
+    }
+    private Boolean isTextType(Schema.DisplayType t) {
+        return t == Schema.DisplayType.String || t == Schema.DisplayType.TextArea ||
+            t == Schema.DisplayType.Email || t == Schema.DisplayType.Phone ||
+            t == Schema.DisplayType.Url;
+    }
+    private Boolean isOrderedType(Schema.DisplayType t) {
+        return t == Schema.DisplayType.Integer || t == Schema.DisplayType.Double ||
+            t == Schema.DisplayType.Currency || t == Schema.DisplayType.Percent ||
+            t == Schema.DisplayType.Date || t == Schema.DisplayType.DateTime ||
+            t == Schema.DisplayType.Time;
+    }
+    private void requireOperator(String field, String operatorName, Boolean supported) {
+        if (!supported) throw new QueryException(operatorName + ' is not supported for ' +
+            objectName + '.' + field + ' (' + String.valueOf(fieldType(field)) + ')');
+    }
     public SoqlBuilderV2 whereGreaterThan(String field, Object value) {
         if (value == null) throw new QueryException('Comparison value cannot be null');
+        requireOperator(field, 'GREATER THAN', isOrderedType(fieldType(field)));
         appendPredicate(checkedField(field) + ' > ' + bind(value));
         return this;
     }
     public SoqlBuilderV2 whereLessThan(String field, Object value) {
         if (value == null) throw new QueryException('Comparison value cannot be null');
+        requireOperator(field, 'LESS THAN', isOrderedType(fieldType(field)));
         appendPredicate(checkedField(field) + ' < ' + bind(value));
         return this;
     }
     public SoqlBuilderV2 whereLike(String field, String pattern) {
         if (pattern == null) throw new QueryException('LIKE pattern cannot be null');
+        requireOperator(field, 'LIKE', isTextType(fieldType(field)));
         appendPredicate(checkedField(field) + ' LIKE ' + bind(pattern));
         return this;
     }
