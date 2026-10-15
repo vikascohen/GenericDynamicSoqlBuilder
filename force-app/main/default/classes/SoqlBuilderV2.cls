@@ -9,6 +9,9 @@ public inherited sharing class SoqlBuilderV2 {
     private Map<String, Schema.SObjectField> fieldMap;
     private List<String> selected = new List<String>();
     private List<String> predicates = new List<String>();
+    private List<String> conjunctions = new List<String>();
+    private List<Integer> groupStarts = new List<Integer>();
+    private String nextConjunction = 'AND';
     private Map<String, Object> bindings = new Map<String, Object>();
     private List<String> ordering = new List<String>();
     private Integer maxRows;
@@ -46,20 +49,59 @@ public inherited sharing class SoqlBuilderV2 {
         bindings.put(key, value);
         return ':' + key;
     }
+    private void appendPredicate(String expression) {
+        predicates.add(expression);
+        conjunctions.add(nextConjunction);
+        nextConjunction = 'AND';
+    }
+    public SoqlBuilderV2 orNext() {
+        if (predicates.isEmpty()) throw new QueryException('OR requires a preceding predicate');
+        nextConjunction = 'OR';
+        return this;
+    }
+    public SoqlBuilderV2 beginGroup() {
+        groupStarts.add(predicates.size());
+        return this;
+    }
+    public SoqlBuilderV2 endGroup() {
+        if (groupStarts.isEmpty()) throw new QueryException('Unmatched group end');
+        Integer start = groupStarts.remove(groupStarts.size() - 1);
+        if (start == predicates.size()) throw new QueryException('Empty predicate group');
+        predicates[start] = '(' + predicates[start];
+        predicates[predicates.size() - 1] += ')';
+        return this;
+    }
+    public SoqlBuilderV2 whereGreaterThan(String field, Object value) {
+        if (value == null) throw new QueryException('Comparison value cannot be null');
+        appendPredicate(checkedField(field) + ' > ' + bind(value));
+        return this;
+    }
+    public SoqlBuilderV2 whereLessThan(String field, Object value) {
+        if (value == null) throw new QueryException('Comparison value cannot be null');
+        appendPredicate(checkedField(field) + ' < ' + bind(value));
+        return this;
+    }
+    public SoqlBuilderV2 whereLike(String field, String pattern) {
+        if (pattern == null) throw new QueryException('LIKE pattern cannot be null');
+        appendPredicate(checkedField(field) + ' LIKE ' + bind(pattern));
+        return this;
+    }
     public SoqlBuilderV2 whereEquals(String field, Object value) {
         String f = checkedField(field);
-        predicates.add(f + (value == null ? ' = NULL' : ' = ' + bind(value)));
+        appendPredicate(f + (value == null ? ' = NULL' : ' = ' + bind(value)));
         return this;
     }
     public SoqlBuilderV2 whereNotEquals(String field, Object value) {
         String f = checkedField(field);
-        predicates.add(f + (value == null ? ' != NULL' : ' != ' + bind(value)));
+        appendPredicate(f + (value == null ? ' != NULL' : ' != ' + bind(value)));
         return this;
     }
-    public SoqlBuilderV2 whereIn(String field, List<Object> values) {
+    public SoqlBuilderV2 whereIn(String field, Set<Id> values) {
         String f = checkedField(field);
         if (values == null || values.isEmpty()) throw new QueryException('IN values must not be empty');
-        predicates.add(f + ' IN ' + bind(values));
+        Schema.DisplayType fieldType = fieldMap.get(field).getDescribe().getType();
+        if (fieldType != Schema.DisplayType.Id && fieldType != Schema.DisplayType.Reference) throw new QueryException('whereIn currently supports Id/reference fields only');
+        appendPredicate(f + ' IN ' + bind(values));
         return this;
     }
     public SoqlBuilderV2 orderBy(String field, Boolean descending) {
@@ -79,7 +121,11 @@ public inherited sharing class SoqlBuilderV2 {
     public String buildSql() {
         if (selected.isEmpty()) throw new QueryException('SELECT fields are required');
         String sql = 'SELECT ' + String.join(selected, ', ') + ' FROM ' + objectName;
-        if (!predicates.isEmpty()) sql += ' WHERE ' + String.join(predicates, ' AND ');
+        if (!groupStarts.isEmpty()) throw new QueryException('Unclosed predicate group');
+        if (!predicates.isEmpty()) {
+            sql += ' WHERE ' + predicates[0];
+            for (Integer i = 1; i < predicates.size(); i++) sql += ' ' + conjunctions[i] + ' ' + predicates[i];
+        }
         if (!ordering.isEmpty()) sql += ' ORDER BY ' + String.join(ordering, ', ');
         if (maxRows != null) sql += ' LIMIT ' + maxRows;
         if (offsetRows != null) sql += ' OFFSET ' + offsetRows;

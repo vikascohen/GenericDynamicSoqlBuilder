@@ -31,4 +31,58 @@ private class SoqlBuilderV2Test {
         catch (SoqlBuilderV2.QueryException e) { rejected = true; }
         System.assert(rejected);
     }
+    @IsTest static void groupedPredicatesExecute() {
+        insert new List<Account>{new Account(Name='Alpha'), new Account(Name='Beta'), new Account(Name='Gamma')};
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+            .selectFields(new List<String>{'Id', 'Name'})
+            .beginGroup().whereEquals('Name', 'Alpha').orNext().whereEquals('Name', 'Beta').endGroup()
+            .whereLike('Name', '%a%').limitTo(10);
+        System.assert(b.buildSql().contains('(Name = :p0 OR Name = :p1) AND Name LIKE :p2'));
+        System.assertEquals(2, b.execute(AccessLevel.SYSTEM_MODE).size());
+    }
+    @IsTest static void invalidGroupsRejected() {
+        Boolean failed = false;
+        try { SoqlBuilderV2.fromObject('Account').selectFields(new List<String>{'Id'}).beginGroup().buildSql(); }
+        catch (SoqlBuilderV2.QueryException e) { failed = true; }
+        System.assert(failed);
+    }
+    @IsTest static void comparisonsNullAndOrdering() {
+        insert new List<Account>{new Account(Name='RevenueA', AnnualRevenue=200), new Account(Name='RevenueB', AnnualRevenue=800)};
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+            .selectFields(new List<String>{'Id', 'Name', 'AnnualRevenue'})
+            .whereGreaterThan('AnnualRevenue', 100)
+            .whereLessThan('AnnualRevenue', 500)
+            .whereNotEquals('Name', null)
+            .orderBy('AnnualRevenue', true).limitTo(5).offsetBy(0);
+        System.assertEquals(1, b.execute(AccessLevel.SYSTEM_MODE).size());
+        System.assertEquals(2, b.getBindings().size());
+    }
+    @IsTest static void invalidOperatorStateRejected() {
+        Boolean rejected = false;
+        try { SoqlBuilderV2.fromObject('Account').orNext(); }
+        catch (SoqlBuilderV2.QueryException e) { rejected = true; }
+        System.assert(rejected);
+        rejected = false;
+        try { SoqlBuilderV2.fromObject('Account').endGroup(); }
+        catch (SoqlBuilderV2.QueryException e) { rejected = true; }
+        System.assert(rejected);
+        rejected = false;
+        try { SoqlBuilderV2.fromObject('Account').beginGroup().endGroup(); }
+        catch (SoqlBuilderV2.QueryException e) { rejected = true; }
+        System.assert(rejected);
+    }
+    @IsTest static void inAndNullValidation() {
+        Account a = new Account(Name='InList'); insert a;
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+            .selectFields(new List<String>{'Id'}).whereIn('Id', new Set<Id>{a.Id});
+        System.assertEquals(1, b.execute(AccessLevel.SYSTEM_MODE).size());
+        Boolean rejected = false;
+        try { SoqlBuilderV2.fromObject('Account').whereIn('Id', new Set<Id>()); }
+        catch (SoqlBuilderV2.QueryException e) { rejected = true; }
+        System.assert(rejected);
+        rejected = false;
+        try { SoqlBuilderV2.fromObject('Account').whereGreaterThan('AnnualRevenue', null); }
+        catch (SoqlBuilderV2.QueryException e) { rejected = true; }
+        System.assert(rejected);
+    }
 }
