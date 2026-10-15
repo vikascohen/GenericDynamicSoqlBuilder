@@ -76,6 +76,110 @@ List<SObject> contacts = SoqlBuilderV2.fromObject('Contact')
 
 Parent relationship selection supports **one hop**, with relationship and target field validation. Polymorphic relationships, child subqueries, multi-hop paths and relationship paths in WHERE or ORDER BY are not supported.
 
+## End-to-end example: a complex account search
+
+Imagine a sales operations screen that must retrieve active business accounts matching **either** a strategic name pattern **or** a combination of revenue and industry criteria. The screen also excludes accounts with missing names, restricts results to a selected set of owners, and applies sorting and pagination. All filter values are runtime inputs; object and field names are checked against Salesforce metadata.
+
+### 1. Build and execute the query in Apex
+
+```apex
+Set<Id> ownerIds = new Set<Id>{ UserInfo.getUserId() };
+String strategicPattern = 'Acme%';
+Decimal minimumRevenue = 250000;
+
+// Reusable filter: strategic accounts OR large technology accounts.
+SoqlBuilderV2.Filter businessRules = SoqlBuilderV2.matching('Name', strategicPattern)
+    .orFilter(
+        SoqlBuilderV2.gt('AnnualRevenue', minimumRevenue)
+            .andFilter(SoqlBuilderV2.eq('Industry', 'Technology'))
+    );
+
+SoqlBuilderV2 query = SoqlBuilderV2.fromObject('Account')
+    .selectFields(new List<String>{
+        'Id', 'Name', 'Industry', 'AnnualRevenue', 'OwnerId', 'CreatedDate'
+    })
+    .whereFilter(businessRules)
+    .whereNotEquals('Name', null)
+    .whereIn('OwnerId', ownerIds)
+    .whereEquals('IsDeleted', false)
+    .orderBy('AnnualRevenue', true)
+    .orderBy('Name', false)
+    .limitTo(50)
+    .offsetBy(0);
+
+// Inspect the generated SOQL and named bind values.
+System.debug(query.buildSql());
+System.debug(query.getBindings());
+
+// Execute with user-level object, field and record access enforcement.
+List<SObject> results = query.execute(AccessLevel.USER_MODE);
+
+// Counts all matching rows, independently of LIMIT and OFFSET.
+Integer matchingRecords = query.countMatches(AccessLevel.USER_MODE);
+```
+
+The reusable filter can be applied to another builder instance. A new instance creates its own named bind parameters, so the filter does not depend on a previously generated query string.
+
+### 2. Generated SOQL
+
+`buildSql()` produces **SOQL, not database SQL**. The following is the equivalent generated statement, formatted for readability. The actual builder emits a single-line statement and may include additional parentheses around individual filter-tree branches.
+
+```sql
+SELECT Id, Name, Industry, AnnualRevenue, OwnerId, CreatedDate
+FROM Account
+WHERE (
+    (Name LIKE :p0 OR (AnnualRevenue > :p1 AND Industry = :p2))
+    AND Name != NULL
+    AND OwnerId IN :p3
+    AND IsDeleted = :p4
+)
+ORDER BY AnnualRevenue DESC, Name ASC
+LIMIT 50 OFFSET 0
+```
+
+The predicate tree renders additional parentheses but preserves this logic. The named bind map is conceptually:
+
+| Bind | Runtime value | Type |
+| --- | --- | --- |
+| `p0` | `Acme%` | String |
+| `p1` | `250000` | Decimal |
+| `p2` | `Technology` | String |
+| `p3` | `{ UserInfo.getUserId() }` | Set of Ids |
+| `p4` | `false` | Boolean |
+
+These values are **not interpolated into SOQL text**. The builder passes the statement and the bind map to `Database.queryWithBinds` with the specified `AccessLevel`. The `countMatches` operation separately generates a `SELECT COUNT()` query using the same WHERE predicates; it does not include the ordering or pagination clauses.
+
+### 3. Equivalent relational SQL for comparison only
+
+The following illustrates how the logical filter might look in a conventional relational database. **It is not SQL generated or executed by this Apex library.** Salesforce uses SOQL and its own data model and access-control semantics.
+
+```sql
+SELECT id, name, industry, annual_revenue, owner_id, created_date
+FROM accounts
+WHERE (
+       name LIKE :p0
+       OR (annual_revenue > :p1 AND industry = :p2)
+      )
+  AND name IS NOT NULL
+  AND owner_id IN (:owner_id_1)
+  AND is_deleted = FALSE
+ORDER BY annual_revenue DESC, name ASC
+LIMIT 50 OFFSET 0;
+```
+
+In this illustrative SQL, `:owner_id_1` represents the single user ID supplied in the Apex example. A conventional SQL engine generally uses `IS NOT NULL` rather than SOQL's `!= NULL` syntax, and column/table names are illustrative rather than actual Salesforce storage names. Ordinary SQL does not automatically reproduce Salesforce sharing, CRUD or field-level security enforcement.
+
+### 4. What this example demonstrates
+
+- Reusable nested **AND/OR** filters with explicit precedence.
+- Metadata-validated field names and runtime type checking for common bind values.
+- Parameter binding for strings, decimals, Boolean values and ID sets.
+- Null predicates, multiple sort fields, LIMIT and OFFSET.
+- Separate query inspection, row retrieval and match counting.
+- Explicit `USER_MODE` execution rather than relying on implicit security behaviour.
+
+**Practical constraints:** The owner ID set must not be empty; the example uses the current user's ID. `whereIn` currently supports only ID/reference fields. `OFFSET` is limited to 2,000. The query is an example of supported APIs, not a claim that every Salesforce org has the same data, field permissions or matching records.
+
 ## API at a glance
 
 | Purpose | API |
