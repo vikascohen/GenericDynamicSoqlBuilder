@@ -285,4 +285,38 @@ private class SoqlBuilderV2Test {
             System.assertEquals(1,b.execute(AccessLevel.SYSTEM_MODE).size());
         }
     }
+    @IsTest static void privateSharingRestrictsUserMode() {
+        Profile standard = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
+        User owner = new User(Alias='ownprobe', Email='ownprobe@example.com',
+            EmailEncodingKey='UTF-8', LastName='ProbeOwner', LanguageLocaleKey='en_US',
+            LocaleSidKey='en_US', TimeZoneSidKey='America/Los_Angeles', ProfileId=standard.Id,
+            Username='owner.' + String.valueOf(Crypto.getRandomInteger()) + '@example.com');
+        User reader = new User(Alias='readprob', Email='readprobe@example.com',
+            EmailEncodingKey='UTF-8', LastName='ProbeReader', LanguageLocaleKey='en_US',
+            LocaleSidKey='en_US', TimeZoneSidKey='America/Los_Angeles', ProfileId=standard.Id,
+            Username='reader.' + String.valueOf(Crypto.getRandomInteger()) + '@example.com');
+        insert new List<User>{owner, reader};
+        PermissionSet ps = [SELECT Id FROM PermissionSet WHERE Name = 'SoqlSharingProbeReader' LIMIT 1];
+        insert new List<PermissionSetAssignment>{
+            new PermissionSetAssignment(AssigneeId=owner.Id, PermissionSetId=ps.Id),
+            new PermissionSetAssignment(AssigneeId=reader.Id, PermissionSetId=ps.Id)
+        };
+        SoqlSharingProbe__c record;
+        System.runAs(new User(Id=UserInfo.getUserId())) {
+            record = new SoqlSharingProbe__c(Name='PrivateProbe', OwnerId=owner.Id);
+            insert record;
+        }
+        System.runAs(owner) {
+            SoqlBuilderV2 b = SoqlBuilderV2.fromObject('ERModel__SoqlSharingProbe__c')
+                .selectFields(new List<String>{'Id'}).whereEquals('Id',record.Id);
+            System.assertEquals(1,b.execute(AccessLevel.USER_MODE).size());
+        }
+        System.runAs(reader) {
+            System.assert(Schema.sObjectType.SoqlSharingProbe__c.isAccessible());
+            SoqlBuilderV2 b = SoqlBuilderV2.fromObject('ERModel__SoqlSharingProbe__c')
+                .selectFields(new List<String>{'Id'}).whereEquals('Id',record.Id);
+            System.assertEquals(0,b.execute(AccessLevel.USER_MODE).size());
+            System.assertEquals(0,b.countMatches(AccessLevel.USER_MODE));
+        }
+    }
 }
