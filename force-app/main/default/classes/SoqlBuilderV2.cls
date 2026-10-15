@@ -181,6 +181,30 @@ public inherited sharing class SoqlBuilderV2 {
             t == Schema.DisplayType.Date || t == Schema.DisplayType.DateTime ||
             t == Schema.DisplayType.Time;
     }
+    private void validateBindType(String field, Object value) {
+        if (value == null) return;
+        Schema.DisplayType t = fieldType(field);
+        Boolean valid = true;
+        if (t == Schema.DisplayType.Id || t == Schema.DisplayType.Reference) {
+            valid = value instanceof Id || value instanceof String;
+        } else if (t == Schema.DisplayType.Boolean) {
+            valid = value instanceof Boolean;
+        } else if (t == Schema.DisplayType.Date) {
+            valid = value instanceof Date;
+        } else if (t == Schema.DisplayType.DateTime) {
+            valid = value instanceof Datetime;
+        } else if (t == Schema.DisplayType.Time) {
+            valid = value instanceof Time;
+        } else if (t == Schema.DisplayType.Integer || t == Schema.DisplayType.Double ||
+                   t == Schema.DisplayType.Currency || t == Schema.DisplayType.Percent) {
+            valid = value instanceof Integer || value instanceof Long ||
+                    value instanceof Decimal || value instanceof Double;
+        } else if (isTextType(t) || t == Schema.DisplayType.Picklist ||
+                   t == Schema.DisplayType.MultiPicklist || t == Schema.DisplayType.EncryptedString) {
+            valid = value instanceof String;
+        }
+        if (!valid) throw new QueryException('Incompatible bind value for ' + objectName + '.' + field);
+    }
     private void requireOperator(String field, String operatorName, Boolean supported) {
         if (!supported) throw new QueryException(operatorName + ' is not supported for ' +
             objectName + '.' + field + ' (' + String.valueOf(fieldType(field)) + ')');
@@ -188,12 +212,14 @@ public inherited sharing class SoqlBuilderV2 {
     public SoqlBuilderV2 whereGreaterThan(String field, Object value) {
         if (value == null) throw new QueryException('Comparison value cannot be null');
         requireOperator(field, 'GREATER THAN', isOrderedType(fieldType(field)));
+        validateBindType(field, value);
         appendPredicate(checkedField(field) + ' > ' + bind(value));
         return this;
     }
     public SoqlBuilderV2 whereLessThan(String field, Object value) {
         if (value == null) throw new QueryException('Comparison value cannot be null');
         requireOperator(field, 'LESS THAN', isOrderedType(fieldType(field)));
+        validateBindType(field, value);
         appendPredicate(checkedField(field) + ' < ' + bind(value));
         return this;
     }
@@ -205,11 +231,13 @@ public inherited sharing class SoqlBuilderV2 {
     }
     public SoqlBuilderV2 whereEquals(String field, Object value) {
         String f = checkedField(field);
+        validateBindType(field, value);
         appendPredicate(f + (value == null ? ' = NULL' : ' = ' + bind(value)));
         return this;
     }
     public SoqlBuilderV2 whereNotEquals(String field, Object value) {
         String f = checkedField(field);
+        validateBindType(field, value);
         appendPredicate(f + (value == null ? ' != NULL' : ' != ' + bind(value)));
         return this;
     }

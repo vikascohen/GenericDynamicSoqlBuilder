@@ -319,4 +319,15 @@ private class SoqlBuilderV2Test {
             System.assertEquals(0,b.countMatches(AccessLevel.USER_MODE));
         }
     }
+    @IsTest static void invalidBindTypeRejected() {
+        Boolean rejected = false;
+        try { SoqlBuilderV2.fromObject('Account').whereEquals('AnnualRevenue', 'invalid'); }
+        catch (SoqlBuilderV2.QueryException e) { rejected = true; }
+        System.assert(rejected);
+    }
+    @IsTest static void validNumericBindExecutes() {
+        insert new Account(Name='BindCheck', AnnualRevenue=100);
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account').selectFields(new List<String>{'Id'}).whereGreaterThan('AnnualRevenue',50);
+        System.assertEquals(1,b.execute(AccessLevel.SYSTEM_MODE).size());
+    }
 }
