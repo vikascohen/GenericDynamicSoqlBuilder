@@ -230,4 +230,32 @@ private class SoqlBuilderV2Test {
             System.assertEquals(1,b.execute(AccessLevel.SYSTEM_MODE).size());
         }
     }
+    @IsTest static void restrictedFieldDeniedInUserMode() {
+        Profile minimum = [SELECT Id FROM Profile WHERE Name = 'Minimum Access - Salesforce' LIMIT 1];
+        User u = new User(Alias='flduser', Email='flduser@example.com',
+            EmailEncodingKey='UTF-8', LastName='FieldRestricted', LanguageLocaleKey='en_US',
+            LocaleSidKey='en_US', TimeZoneSidKey='America/Los_Angeles',
+            ProfileId=minimum.Id,
+            Username='flduser.' + String.valueOf(Crypto.getRandomInteger()) + '@example.com');
+        insert u;
+        System.runAs(u) {
+            System.assert(Schema.sObjectType.User.isAccessible(), 'User object must be readable');
+            String restrictedField;
+            for (String fieldName : Schema.sObjectType.User.fields.getMap().keySet()) {
+                Schema.DescribeFieldResult d = Schema.sObjectType.User.fields.getMap().get(fieldName).getDescribe();
+                if (!d.isAccessible()) {
+                    restrictedField = d.getName();
+                    break;
+                }
+            }
+            System.assertNotEquals(null, restrictedField, 'A restricted User field is required for this test');
+            SoqlBuilderV2 b = SoqlBuilderV2.fromObject('User')
+                .selectFields(new List<String>{'Id',restrictedField}).whereEquals('Id',u.Id);
+            Boolean denied = false;
+            try { b.execute(AccessLevel.USER_MODE); }
+            catch (System.QueryException e) { denied = true; }
+            System.assert(denied, 'USER_MODE must enforce field access');
+            System.assertEquals(1,b.execute(AccessLevel.SYSTEM_MODE).size());
+        }
+    }
 }
