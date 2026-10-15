@@ -8,10 +8,27 @@ public inherited sharing class SoqlBuilderV2 {
     private Schema.DescribeSObjectResult objectDescribe;
     private Map<String, Schema.SObjectField> fieldMap;
     private List<String> selected = new List<String>();
-    private List<String> predicates = new List<String>();
-    private List<String> conjunctions = new List<String>();
-    private List<Integer> groupStarts = new List<Integer>();
-    private String nextConjunction = 'AND';
+    // Predicate tree: explicit grouping and boolean precedence, never raw WHERE fragments.
+    private class PredicateNode {
+        String atom;
+        String op;
+        PredicateNode left;
+        PredicateNode right;
+        PredicateNode(String atom) { this.atom = atom; }
+        PredicateNode(String op, PredicateNode left, PredicateNode right) {
+            this.op = op; this.left = left; this.right = right;
+        }
+        String render() {
+            if (atom != null) return atom;
+            return '(' + left.render() + ' ' + op + ' ' + right.render() + ')';
+        }
+    }
+    private class PredicateFrame {
+        PredicateNode root;
+        String joinWith = 'AND';
+        String parentJoin;
+    }
+    private List<PredicateFrame> frames = new List<PredicateFrame>{new PredicateFrame()};
     private Map<String, Object> bindings = new Map<String, Object>();
     private List<String> ordering = new List<String>();
     private Integer maxRows;
@@ -49,27 +66,39 @@ public inherited sharing class SoqlBuilderV2 {
         bindings.put(key, value);
         return ':' + key;
     }
-    private void appendPredicate(String expression) {
-        predicates.add(expression);
-        conjunctions.add(nextConjunction);
-        nextConjunction = 'AND';
+    private PredicateFrame currentFrame() { return frames[frames.size() - 1]; }
+    private void appendNode(PredicateNode node) {
+        PredicateFrame frame = currentFrame();
+        frame.root = frame.root == null ? node : new PredicateNode(frame.joinWith, frame.root, node);
+        frame.joinWith = 'AND';
     }
+    private void appendPredicate(String expression) { appendNode(new PredicateNode(expression)); }
     public SoqlBuilderV2 orNext() {
-        if (predicates.isEmpty()) throw new QueryException('OR requires a preceding predicate');
-        nextConjunction = 'OR';
+        if (currentFrame().root == null) throw new QueryException('OR requires a preceding predicate in this group');
+        currentFrame().joinWith = 'OR';
         return this;
     }
     public SoqlBuilderV2 beginGroup() {
-        groupStarts.add(predicates.size());
+        PredicateFrame parent = currentFrame();
+        PredicateFrame child = new PredicateFrame();
+        child.parentJoin = parent.joinWith;
+        frames.add(child);
+        parent.joinWith = 'AND';
         return this;
     }
     public SoqlBuilderV2 endGroup() {
-        if (groupStarts.isEmpty()) throw new QueryException('Unmatched group end');
-        Integer start = groupStarts.remove(groupStarts.size() - 1);
-        if (start == predicates.size()) throw new QueryException('Empty predicate group');
-        predicates[start] = '(' + predicates[start];
-        predicates[predicates.size() - 1] += ')';
+        if (frames.size() == 1) throw new QueryException('Unmatched group end');
+        PredicateFrame child = frames.remove(frames.size() - 1);
+        if (child.root == null) throw new QueryException('Empty predicate group');
+        PredicateFrame parent = currentFrame();
+        parent.joinWith = child.parentJoin;
+        appendNode(child.root);
         return this;
+    }
+    private String whereClause() {
+        if (frames.size() != 1) throw new QueryException('Unclosed predicate group');
+        PredicateNode root = currentFrame().root;
+        return root == null ? '' : ' WHERE ' + root.render();
     }
     public SoqlBuilderV2 whereGreaterThan(String field, Object value) {
         if (value == null) throw new QueryException('Comparison value cannot be null');
@@ -121,11 +150,7 @@ public inherited sharing class SoqlBuilderV2 {
     public String buildSql() {
         if (selected.isEmpty()) throw new QueryException('SELECT fields are required');
         String sql = 'SELECT ' + String.join(selected, ', ') + ' FROM ' + objectName;
-        if (!groupStarts.isEmpty()) throw new QueryException('Unclosed predicate group');
-        if (!predicates.isEmpty()) {
-            sql += ' WHERE ' + predicates[0];
-            for (Integer i = 1; i < predicates.size(); i++) sql += ' ' + conjunctions[i] + ' ' + predicates[i];
-        }
+        sql += whereClause();
         if (!ordering.isEmpty()) sql += ' ORDER BY ' + String.join(ordering, ', ');
         if (maxRows != null) sql += ' LIMIT ' + maxRows;
         if (offsetRows != null) sql += ' OFFSET ' + offsetRows;
@@ -138,12 +163,7 @@ public inherited sharing class SoqlBuilderV2 {
     /** Count matching rows without retrieving full records. */
     public Integer countMatches(AccessLevel mode) {
         if (mode == null) throw new QueryException('Explicit access mode required');
-        if (!groupStarts.isEmpty()) throw new QueryException('Unclosed predicate group');
-        String sql = 'SELECT COUNT() FROM ' + objectName;
-        if (!predicates.isEmpty()) {
-            sql += ' WHERE ' + predicates[0];
-            for (Integer i = 1; i < predicates.size(); i++) sql += ' ' + conjunctions[i] + ' ' + predicates[i];
-        }
+        String sql = 'SELECT COUNT() FROM ' + objectName + whereClause();
         return Database.countQueryWithBinds(sql, bindings, mode);
     }
     /** Use in batch start() for streaming larger datasets. */

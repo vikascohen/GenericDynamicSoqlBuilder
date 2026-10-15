@@ -97,4 +97,25 @@ private class SoqlBuilderV2Test {
             .selectFields(new List<String>{'Id'}).limitTo(10);
         System.assertNotEquals(null,b.queryLocator(AccessLevel.SYSTEM_MODE));
     }
+    @IsTest static void nestedGroupsPreserveMeaning() {
+        insert new List<Account>{new Account(Name='TreeAlpha', AnnualRevenue=100), new Account(Name='TreeBeta', AnnualRevenue=200), new Account(Name='TreeGamma', AnnualRevenue=300)};
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+            .selectFields(new List<String>{'Id'})
+            .beginGroup()
+                .whereEquals('Name', 'TreeAlpha')
+                .orNext().beginGroup()
+                    .whereEquals('Name', 'TreeBeta')
+                    .whereGreaterThan('AnnualRevenue', 150)
+                .endGroup()
+            .endGroup()
+            .whereLessThan('AnnualRevenue', 250);
+        System.assertEquals(2, b.execute(AccessLevel.SYSTEM_MODE).size());
+        System.assertEquals(2, b.countMatches(AccessLevel.SYSTEM_MODE));
+    }
+    @IsTest static void groupCannotBorrowPriorOr() {
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+            .selectFields(new List<String>{'Id'}).whereEquals('Name','A')
+            .orNext().beginGroup().whereEquals('Name','B').whereEquals('Name','C').endGroup();
+        System.assert(b.buildSql().contains(' OR '));
+    }
 }

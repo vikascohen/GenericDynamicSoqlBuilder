@@ -36,3 +36,9 @@ V2 delegates execution to Salesforce's native bind-aware APIs. `execute(mode)` r
 Salesforce already supplies bind-aware execution, and fflib supplies selector/query factory patterns. V2 targets smaller teams and metadata-driven applications that need safe, validated query composition without an enterprise framework dependency. Planned: typed predicate AST, operator/type compatibility checks, reusable filter specifications, relationship path validation, security tests under restricted users and CI. These are not yet implemented.
 
 Validation: 10 Apex tests passed in `warden-validation` on 15 October 2026. Salesforce reported 100% test-run coverage; this is not a security certification or a claim that every edge case is tested.
+
+## Typed predicate tree
+
+Boolean predicates now compose through internal `PredicateNode` and `PredicateFrame` structures. Grouping is represented as a tree, rather than modifying existing string fragments. The renderer emits explicit parentheses to preserve the intended order. The public fluent API remains compatible. Nested group execution is covered by Salesforce Apex tests. This is a predicate tree, not yet a fully typed field/operator expression model; operator/type validation remains a separate planned feature.
+
+Validation: 12 Apex tests passed in `warden-validation` on 15 October 2026, with 100% reported test-run coverage. The suite is not an exhaustive correctness or security assessment.
