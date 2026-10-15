@@ -258,4 +258,31 @@ private class SoqlBuilderV2Test {
             System.assertEquals(1,b.execute(AccessLevel.SYSTEM_MODE).size());
         }
     }
+    @IsTest static void parentRelationshipRespectsFieldSecurity() {
+        Profile minimum = [SELECT Id FROM Profile WHERE Name = 'Minimum Access - Salesforce' LIMIT 1];
+        User u = new User(Alias='relfls', Email='relfls@example.com',
+            EmailEncodingKey='UTF-8', LastName='RelRestricted', LanguageLocaleKey='en_US',
+            LocaleSidKey='en_US', TimeZoneSidKey='America/Los_Angeles',
+            ProfileId=minimum.Id, ManagerId=UserInfo.getUserId(),
+            Username='relfls.' + String.valueOf(Crypto.getRandomInteger()) + '@example.com');
+        insert u;
+        System.runAs(u) {
+            System.assert(Schema.sObjectType.User.isAccessible());
+            String restrictedField;
+            for (String name : Schema.sObjectType.User.fields.getMap().keySet()) {
+                Schema.DescribeFieldResult d = Schema.sObjectType.User.fields.getMap().get(name).getDescribe();
+                if (!d.isAccessible()) { restrictedField = d.getName(); break; }
+            }
+            System.assertNotEquals(null, restrictedField);
+            SoqlBuilderV2 b = SoqlBuilderV2.fromObject('User')
+                .selectFields(new List<String>{'Id'})
+                .selectParentFields(new List<String>{'Manager.' + restrictedField})
+                .whereEquals('Id',u.Id);
+            Boolean denied = false;
+            try { b.execute(AccessLevel.USER_MODE); }
+            catch (System.QueryException e) { denied = true; }
+            System.assert(denied, 'USER_MODE must enforce parent field security');
+            System.assertEquals(1,b.execute(AccessLevel.SYSTEM_MODE).size());
+        }
+    }
 }
