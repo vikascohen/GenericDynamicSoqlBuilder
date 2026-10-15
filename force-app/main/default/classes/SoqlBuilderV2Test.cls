@@ -377,4 +377,26 @@ private class SoqlBuilderV2Test {
         System.assert(Limits.getCpuTime() - beforeCpu < Limits.getLimitCpuTime());
         Test.stopTest();
     }
+    @IsTest static void sqlLikeFacadeSelectJoinAndWhere() {
+        Account account = new Account(Name='SqlFacadeAccount', Industry='Technology');
+        insert account;
+        Contact contact = new Contact(LastName='SqlFacadeContact', AccountId=account.Id);
+        insert contact;
+        SoqlBuilderV2 b = SoqlBuilderV2.selectFrom('Contact', new List<String>{'Id', 'LastName'})
+            .joinParent('Account', new List<String>{'Name'})
+            .whereEqual('Id', contact.Id)
+            .andWhere('LastName', 'SqlFacadeContact')
+            .orderByAsc('LastName').limitTo(10);
+        System.assert(b.buildSql().contains('Account.Name'));
+        System.assert(b.buildSql().contains('ORDER BY LastName ASC'));
+        System.assertEquals(2, b.getBindings().size());
+    }
+    @IsTest static void sqlLikeFacadeRejectsInvalidJoin() {
+        Boolean rejected = false;
+        try {
+            SoqlBuilderV2.selectFrom('Contact', new List<String>{'Id'})
+                .joinParent('NotARealRelationship', new List<String>{'Name'});
+        } catch (SoqlBuilderV2.QueryException e) { rejected = true; }
+        System.assert(rejected);
+    }
 }

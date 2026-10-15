@@ -35,6 +35,36 @@ List<SObject> accounts = SoqlBuilderV2.fromObject('Account')
 
 `USER_MODE` applies Salesforce user-level data-access checks. `SYSTEM_MODE` is available when deliberately required; it does **not** guarantee bypass of record sharing in every calling context because the builder is declared `inherited sharing`. Choose the mode and calling context deliberately.
 
+## SQL-inspired V2 fluent API (initial implementation)
+
+V2 now offers a SQL-inspired entry point and a metadata-validated parent relationship abstraction. These methods **compile to SOQL**, not to relational SQL. In Apex, `where` is reserved, so the equality method is named `whereEqual`.
+
+```apex
+SoqlBuilderV2 query = SoqlBuilderV2.selectFrom(
+        'Contact', new List<String>{'Id', 'LastName', 'AccountId'}
+    )
+    .joinParent('Account', new List<String>{'Name', 'Industry'})
+    .whereEqual('LastName', 'Smith')
+    .andWhere('AccountId', someAccountId)
+    .orderByAsc('LastName')
+    .limitTo(50);
+
+System.debug(query.buildSql());
+List<SObject> contacts = query.execute(AccessLevel.USER_MODE);
+```
+
+The corresponding SOQL shape is:
+
+```sql
+SELECT Id, LastName, AccountId, Account.Name, Account.Industry
+FROM Contact
+WHERE (LastName = :p0 AND AccountId = :p1)
+ORDER BY LastName ASC
+LIMIT 50
+```
+
+`joinParent` is **not a SQL JOIN**: it resolves one-hop Salesforce parent relationship fields for SELECT. It does not currently support WHERE predicates on parent fields, SQL `ON` conditions, arbitrary object joins or child subqueries. Existing V2 methods remain supported; this is the beginning of the V2 SQL-like redesign, not a completed SQL parser.
+
 ## Composable filters
 
 ```apex

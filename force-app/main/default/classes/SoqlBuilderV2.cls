@@ -90,6 +90,33 @@ public inherited sharing class SoqlBuilderV2 {
     public static SoqlBuilderV2 fromObject(String apiName) {
         return new SoqlBuilderV2(apiName);
     }
+    /** SQL-like entry point; SELECT fields are validated after FROM resolves metadata. */
+    public static SoqlBuilderV2 selectFrom(String objectApiName, List<String> fields) {
+        return fromObject(objectApiName).selectFields(fields);
+    }
+    /** SQL-like relationship traversal; SOQL uses parent paths rather than SQL JOIN. */
+    public SoqlBuilderV2 joinParent(String relationshipName, List<String> parentFields) {
+        if (String.isBlank(relationshipName) || parentFields == null || parentFields.isEmpty()) {
+            throw new QueryException('Parent relationship and fields are required');
+        }
+        List<String> paths = new List<String>();
+        for (String field : parentFields) {
+            if (String.isBlank(field) || field.contains('.')) {
+                throw new QueryException('Expected a direct parent field');
+            }
+            paths.add(relationshipName + '.' + field);
+        }
+        return selectParentFields(paths);
+    }
+    /** SQL-like aliases for fluent WHERE and ORDER BY. */
+    public SoqlBuilderV2 whereEqual(String field, Object value) { return whereEquals(field, value); }
+    public SoqlBuilderV2 andWhere(String field, Object value) { return whereEquals(field, value); }
+    public SoqlBuilderV2 orWhere(String field, Object value) {
+        orNext();
+        return whereEquals(field, value);
+    }
+    public SoqlBuilderV2 orderByAsc(String field) { return orderBy(field, false); }
+    public SoqlBuilderV2 orderByDesc(String field) { return orderBy(field, true); }
     private String checkedField(String name) {
         if (String.isBlank(name) || !fieldMap.containsKey(name)) {
             throw new QueryException('Unknown field on ' + objectName + ': ' + name);
