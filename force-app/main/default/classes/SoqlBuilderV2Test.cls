@@ -139,4 +139,34 @@ private class SoqlBuilderV2Test {
             .whereGreaterThan('AnnualRevenue',100).whereLessThan('AnnualRevenue',200);
         System.assertEquals(1,b.execute(AccessLevel.SYSTEM_MODE).size());
     }
+    @IsTest static void reusableFiltersExecuteOnMultipleQueries() {
+        insert new List<Account>{new Account(Name='ReusableOne',AnnualRevenue=150),
+            new Account(Name='ReusableTwo',AnnualRevenue=350),
+            new Account(Name='Unrelated',AnnualRevenue=150)};
+        SoqlBuilderV2.Filter shared = SoqlBuilderV2.matching('Name','Reusable%')
+            .andFilter(SoqlBuilderV2.gt('AnnualRevenue',100))
+            .andFilter(SoqlBuilderV2.lt('AnnualRevenue',200));
+        SoqlBuilderV2 a = SoqlBuilderV2.fromObject('Account')
+            .selectFields(new List<String>{'Id'}).whereFilter(shared);
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+            .selectFields(new List<String>{'Name'}).whereFilter(shared);
+        System.assertEquals(1,a.execute(AccessLevel.SYSTEM_MODE).size());
+        System.assertEquals(1,b.countMatches(AccessLevel.SYSTEM_MODE));
+        System.assertEquals(3,a.getBindings().size());
+        System.assertEquals(3,b.getBindings().size());
+    }
+    @IsTest static void reusableOrFilterPreservesPrecedence() {
+        insert new List<Account>{new Account(Name='ReusableAlpha'),new Account(Name='ReusableBeta'),new Account(Name='Other')};
+        SoqlBuilderV2.Filter either = SoqlBuilderV2.eq('Name','ReusableAlpha')
+            .orFilter(SoqlBuilderV2.eq('Name','ReusableBeta'));
+        SoqlBuilderV2 b = SoqlBuilderV2.fromObject('Account')
+            .selectFields(new List<String>{'Id'}).whereFilter(either).whereLike('Name','Reusable%');
+        System.assertEquals(2,b.execute(AccessLevel.SYSTEM_MODE).size());
+    }
+    @IsTest static void reusableFilterRejectsBadField() {
+        Boolean rejected = false;
+        try { SoqlBuilderV2.fromObject('Account').whereFilter(SoqlBuilderV2.eq('NotAField',1)); }
+        catch (SoqlBuilderV2.QueryException e) { rejected = true; }
+        System.assert(rejected);
+    }
 }

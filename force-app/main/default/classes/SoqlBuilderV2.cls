@@ -4,6 +4,49 @@
  */
 public inherited sharing class SoqlBuilderV2 {
     public class QueryException extends Exception {}
+    /** Reusable, composable filter specification. Does not store rendered SOQL. */
+    public class Filter {
+        private String operatorName;
+        private String fieldName;
+        private Object filterValue;
+        private Filter leftFilter;
+        private Filter rightFilter;
+        private Filter(String op, String field, Object value) {
+            operatorName = op; fieldName = field; filterValue = value;
+        }
+        private Filter(String op, Filter left, Filter right) {
+            if (left == null || right == null) throw new QueryException('Both filters are required');
+            operatorName = op; leftFilter = left; rightFilter = right;
+        }
+        public Filter andFilter(Filter other) { return new Filter('AND', this, other); }
+        public Filter orFilter(Filter other) { return new Filter('OR', this, other); }
+    }
+    public static Filter eq(String field, Object value) { return new Filter('EQ', field, value); }
+    public static Filter ne(String field, Object value) { return new Filter('NE', field, value); }
+    public static Filter gt(String field, Object value) { return new Filter('GT', field, value); }
+    public static Filter lt(String field, Object value) { return new Filter('LT', field, value); }
+    public static Filter matching(String field, String value) { return new Filter('LIKE', field, value); }
+    public SoqlBuilderV2 whereFilter(Filter filter) {
+        if (filter == null) throw new QueryException('Filter is required');
+        beginGroup();
+        applyFilter(filter);
+        endGroup();
+        return this;
+    }
+    private void applyFilter(Filter filter) {
+        if (filter.operatorName == 'AND' || filter.operatorName == 'OR') {
+            beginGroup();
+            applyFilter(filter.leftFilter);
+            if (filter.operatorName == 'OR') orNext();
+            applyFilter(filter.rightFilter);
+            endGroup();
+        } else if (filter.operatorName == 'EQ') whereEquals(filter.fieldName, filter.filterValue);
+        else if (filter.operatorName == 'NE') whereNotEquals(filter.fieldName, filter.filterValue);
+        else if (filter.operatorName == 'GT') whereGreaterThan(filter.fieldName, filter.filterValue);
+        else if (filter.operatorName == 'LT') whereLessThan(filter.fieldName, filter.filterValue);
+        else if (filter.operatorName == 'LIKE') whereLike(filter.fieldName, (String) filter.filterValue);
+        else throw new QueryException('Unsupported filter operator');
+    }
     private String objectName;
     private Schema.DescribeSObjectResult objectDescribe;
     private Map<String, Schema.SObjectField> fieldMap;

@@ -42,3 +42,18 @@ Validation: 10 Apex tests passed in `warden-validation` on 15 October 2026. Sale
 Boolean predicates now compose through internal `PredicateNode` and `PredicateFrame` structures. Grouping is represented as a tree, rather than modifying existing string fragments. The renderer emits explicit parentheses to preserve the intended order. The public fluent API remains compatible. Nested group execution is covered by Salesforce Apex tests. This is a predicate tree, not yet a fully typed field/operator expression model; operator/type validation remains a separate planned feature.
 
 Validation: 12 Apex tests passed in `warden-validation` on 15 October 2026, with 100% reported test-run coverage. The suite is not an exhaustive correctness or security assessment.
+
+## Reusable filter specifications
+
+Filters are reusable query-independent specifications, composed with `andFilter` and `orFilter`. Each builder validates and binds the filter independently; callers never supply raw SOQL fragments.
+
+```apex
+SoqlBuilderV2.Filter shared = SoqlBuilderV2.matching('Name', 'Acme%')
+    .andFilter(SoqlBuilderV2.gt('AnnualRevenue', 100000));
+List<SObject> rows = SoqlBuilderV2.fromObject('Account')
+    .selectFields(new List<String>{'Id', 'Name'})
+    .whereFilter(shared)
+    .execute(AccessLevel.USER_MODE);
+```
+
+Available filter factories: `eq`, `ne`, `gt`, `lt`, `matching` (`LIKE`). Filter composition preserves grouping and uses bind parameters. This is not yet a serialisable specification format or a general query-policy engine. Validation: 17 Apex tests passed in `warden-validation` on 15 October 2026; Salesforce reported 99% test-run coverage, not org-wide coverage.
